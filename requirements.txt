@@ -16,3 +16,4 @@ beautifulsoup4>=4.12
 lxml>=4.9
 openpyxl>=3.1
 infomap
+pycirclize
