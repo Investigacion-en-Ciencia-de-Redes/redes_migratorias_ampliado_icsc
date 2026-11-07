@@ -41,6 +41,7 @@ from pycirclize.parser import Matrix
 
 
 
+
 def crear_tabla_de_referencias(df_migraciones, df_m49) -> None:
     
     df_nombres_paises = (
@@ -1108,231 +1109,6 @@ def convertir_valor(valor: int, redondeo:int = 2) -> str:
         )
     
 
-
-
-
-
-    
-def graficar_bloques_africa(
-    paises_sin_bloque: set[str],
-    dicc_bloques_asignados: dict[int, set[str]],
-    dicc_cohesion_por_bloque:  dict[int, float],
-    df_coords: pd.DataFrame,
-) -> Figure: 
-
-    paises_africa = [
-        pais 
-        for bloques in dicc_bloques_asignados.values() 
-        for pais in bloques
-    ]
-    
-    # Creamos la red que permite graficar sobre el mapa
-    red_bloques = nx.Graph()
-    for bloque, cohesion  in zip(dicc_bloques_asignados.values(), dicc_cohesion_por_bloque.values()):
-        for tupla_miembros in itertools.combinations(bloque, 2):
-            # Nombres de países
-            m1 = tupla_miembros[0]
-            m2 = tupla_miembros[1]
-            
-            # Posiciones de los países
-            lon_m1 = df_coords.loc[df_coords.iso3_coord == m1, 'lon'].iloc[0]
-            lat_m1 = df_coords.loc[df_coords.iso3_coord == m1, 'lat'].iloc[0]        
-            lon_m2 = df_coords.loc[df_coords.iso3_coord == m2, 'lon'].iloc[0]
-            lat_m2 = df_coords.loc[df_coords.iso3_coord == m2, 'lat'].iloc[0]        
-
-            # Agregamos el vínculo
-            red_bloques.add_edge(m1, m2, weight=cohesion)
-
-            # Si el nodo origen aún no fue ingresado
-            if not bool(red_bloques.nodes[m1]):
-                red_bloques.add_node(m1, pos=(lon_m1, lat_m1))
-            if not bool(red_bloques.nodes[m2]):  
-                red_bloques.add_node(m2, pos=(lon_m2, lat_m2))
-
-    
-    # Configuración de la visualización
-    # Tamaño del gráfico
-    tam_figura = (20,17)  
-    # Márgenes que permiten regular el zoom sobre el mapa
-    margen_lon = 7
-    margen_lat = 7
-    # Colores del mapa
-    agua = '#ffffff'
-    tierra = '#c3c3ca'
-    fronteras = '#cdced5'
-    continentes = '#525255'
-    # Colores del grafo
-    color_titulo = '#0c0c0c'
-    color_nodos = '#ba0000'
-    color_aris = '#000000'#5eebc1'
-    color_etq_pais = '#000000'
-    # Paleta de colores para los nodos
-    paleta = [
-        '#9d3c43',
-        '#d9d697',
-        '#98eaa4',
-        '#f98c78',
-        '#b172ff',
-        '#06c9d3',
-        '#377054',
-        '#f1d438',
-        '#f8474a',
-        '#3e38ff',
-        '#ff1a98',
-    ]
-    
-    
-    # Tamaños de fuentes
-    tam_tex_etq = 12 # nodos
-    tam_tex_titulo = 17 # título gráfico
-    tam_tex_ref = 17 # referencias
-    
-    # Vsualización de la red
-    fig = plt.figure(figsize=tam_figura)
-    
-    # Configuración de colores
-    fig.set_facecolor(agua) # Color predominante (fondo)
-    eje = fig.add_subplot(1,1,1)
-    eje.set_facecolor(agua)  # Fondo interior donde se dibuja el grafo
-    eje.axis('off') # Remueve el marco y el color blanco dentro del grafo
-    
-    # Hago zoom en la región de interés
-    posiciones_ingresadas = nx.get_node_attributes(red_bloques, 'pos')
-    lons = [pos[0] for pos in posiciones_ingresadas.values()]
-    lats = [pos[1] for pos in posiciones_ingresadas.values()]
-    
-    
-    # Proyección
-    eje = plt.axes(projection=ccrs.PlateCarree())
-    
-    # Extensión del mapa
-    eje.set_extent(
-        [
-            min(lons) - margen_lon,
-            max(lons) + margen_lon,
-            min(lats) - margen_lat,
-            max(lats) + margen_lat,
-        ],
-        crs=ccrs.PlateCarree()
-    )
-    
-    # Elementos del mapa
-    eje.add_feature(cfeature.LAND, facecolor=tierra)
-    eje.add_feature(cfeature.OCEAN, facecolor=agua)
-    eje.add_feature(cfeature.COASTLINE, edgecolor=continentes, linewidth=0.8)
-    eje.add_feature(cfeature.BORDERS, edgecolor=fronteras, linewidth=0.6)
-    forma_paises = shpreader.natural_earth(
-        resolution='110m',
-        category='cultural',
-        name='admin_0_countries'
-    )
-    lector = shpreader.Reader(forma_paises)
-    poligonos_paises = {}
-    for p in lector.records():
-        iso = p.attributes['ISO_A3']
-        nombre = p.attributes['NAME']    
-        if nombre == 'Somaliland':
-            iso = 'SOMI'    
-        poligonos_paises[iso] = p.geometry
-        
-    
-    # Geometrías de países
-    for i, bloque in enumerate(dicc_bloques_asignados.values()):
-        for pais in bloque:
-            if poligonos_paises.get(pais, None):
-                eje.add_geometries(
-                    [poligonos_paises[pais]],
-                    crs=ccrs.PlateCarree(),
-                    edgecolor='black',
-                    linewidth=.6,
-                    facecolor=paleta[i],
-                    alpha=.7,
-                    hatch='//' if pais in paises_sin_bloque else None
-                )
-            if pais == 'SOM':                   
-                eje.add_geometries(
-                    [poligonos_paises['SOMI']],
-                    crs=ccrs.PlateCarree(),
-                    edgecolor='black',
-                    linewidth=.6,
-                    facecolor=paleta[i],
-                    alpha=.7, 
-                    hatch='//' if pais in paises_sin_bloque else None
-                )
-    
-    for i, bloque in enumerate(dicc_bloques_asignados.values()):
-        for pais in bloque:
-            if pais in ['MUS', 'SYC', 'COM', 'STP', 'CPV']:
-                tamaño_nodo = 900
-            else:
-                tamaño_nodo = 0
-            nx.draw_networkx_nodes(
-                red_bloques,            
-                posiciones_ingresadas,
-                nodelist=[pais],
-                node_size=tamaño_nodo,
-                node_color=paleta[i],
-                node_shape='o',
-                alpha=.7,
-                ax=eje,
-            )
-    
-    
-    # ETIQUETAS    
-    for nodo in red_bloques.nodes():
-        if nodo in paises_sin_bloque:
-            fuente = 'normal'
-        else: 
-            fuente = 'black'            
-        nx.draw_networkx_labels(
-            red_bloques,
-            posiciones_ingresadas,
-            labels={nodo: nodo},
-            font_color=color_etq_pais,
-            font_weight=fuente,
-            alpha=1,
-            font_size=tam_tex_etq,
-            ax=eje,
-        )
-
-
-    
-    # REFERENCIAS
-    lista_ref = []
-    for i, cohesion in dicc_cohesion_por_bloque.items():
-        lista_ref.append(
-            mpatches.Patch(
-                color=to_rgba(paleta[i], alpha=.7),
-                label=f'Cohesión: {round(cohesion, 3)}'
-            )
-        )
-    
-    ref1 = eje.legend(
-        # title='REFERENCIAS',
-        handles=lista_ref,
-        loc='lower left',
-        fontsize=tam_tex_ref,
-        frameon=True,
-        facecolor='none',
-        framealpha=0,
-    )
-    
-    for text in ref1.get_texts():
-        text.set_color('black')
-    eje.add_artist(ref1)
-    
-    
-    eje.set_title(
-        '',
-        fontsize=tam_tex_titulo,
-        color=color_titulo,
-    )
-    
-    fig.tight_layout()
-    plt.savefig("resultados/bloques_africa.png", bbox_inches='tight', dpi=300) 
-    plt.close()
-    
-    return fig
     
     
 
@@ -2686,7 +2462,1159 @@ def plot_balance_migratorio(año, df, otro=False):
 
 
 
-# Migraciones en el Commonwealth
+
+def graficar_migra_arg(
+    dicc_datos_por_año: dict[int, pd.DataFrame],
+    paleta: str,
+    nombre_archivo: str,
+) -> None:
+    
+    # Definimos el dominio
+    lados = 10
+    angulos = np.linspace(0, 2*np.pi, lados, endpoint=False)
+    vertices_dominio = [(np.cos(theta), np.sin(theta)) for theta in angulos]
+    
+    dpi = 300
+   
+    años = [1990, 1995, 2000, 2005, 2010, 2015, 2020, 2024]
+    
+    # lista_magnitudes_objetivo = [
+    #     ('poblacion', 'Marrón'), ('emigrantes', 'Verde'), ('inmigrantes', 'Roja')
+    # ]
+    magnitud_objetivo = 'migrantes'
+
+    # for magnitud_objetivo, paleta in lista_magnitudes_objetivo:
+    for año in años:  
+            
+        df = dicc_datos_por_año[año].copy()
+            
+            # columnas_de_interes = [
+            #     'alfa2',
+            #     magnitud_objetivo,
+            #     f'pct_aporte_{magnitud_objetivo}',
+            #     'lon', 
+            #     'lat', 
+            # ]        
+            # columnas_de_interes = df.columns.to_list()
+            
+            # # Recortamos a las columnas de interes y ordenamos
+            # df = df[columnas_de_interes]
+            # df = df.sort_values([columnas_de_interes[2]], ascending=False).reset_index(drop=True)
+            # # Separamos los paises que explican 90%
+            # df[f'pct_aporte_{magnitud_objetivo}_acum'] = df[f'pct_aporte_{magnitud_objetivo}'].cumsum()
+            # df = df[df[f'pct_aporte_{magnitud_objetivo}_acum'] < 91]
+    
+        # Datos para la construcción del gráfico
+        nombres_de_celdas = df.iso2.values
+        
+        # Datos para la construcción del diagrama
+        valores_magnitud_objetivo = df[magnitud_objetivo].values
+        x, y = df.lon.values, df.lat.values    
+
+        # Normalizamos las coordenadas a [-1, 1]
+        x = (x + 180) / 180 - 1
+        y = (y + 90) / 90 - 1
+        coordenadas_de_sitios = np.column_stack((x, y))
+                   
+        pct_barra = 0.0
+        formato_barra: str = "{desc}: [{bar}] {percentage:3.0f}% | {elapsed}"
+        texto_barra: str = f'Construyendo diagrama: {nombre_archivo}-{año}'       
+    
+        diagrama = dipot.DiagramaDePotencia(
+            vertices_dominio,
+            coordenadas_de_sitios,
+            nombres_de_celdas,
+            valores_magnitud_objetivo,   
+        )
+            
+        with tqdm(total=100, desc=texto_barra, bar_format=formato_barra) as barra_pct:    
+            diagrama.construir_diagrama(        
+                .13, # alfa_base
+                500, # max_iteraciones
+                5, # umbral_estancamiento
+                1e-5, # error_rel_max_permitido,
+                False, # imprimir progreso
+                barra_pct
+            )
+        
+        config_grafico = {
+            # Título
+            'margen_titulo': 7,
+            # Nombres de celdas
+            'alfa_nombres_de_celdas': .8, 
+            'factor_aumento': 4,
+            # Celdas
+            'tam_min_nombre_celda': 8,
+            'grosor_borde_celdas': 1,
+            'alfa_borde_celdas': .7,
+            'paleta_celdas': paleta,
+        }    
+                    
+        vis = diagrama._graficar_diagrama(    
+            10, # Ancho
+            10, # Alto
+            dpi, # DPI
+            '', # Título
+            '', # Nota al pie
+            0, # Núm. de caracteres por línea
+            f'resultados/diagrama_potencia_{nombre_archivo}_{año}', # Ruta de salida
+            None, # eje
+            **config_grafico,
+        )
+
+        display(vis)
+
+
+
+
+
+
+#######################################################
+#######################################################
+#######################################################
+
+# Función para cruzar las variables económicas con las migraciones
+def agregar_columna(
+    df_migras: pd.DataFrame, 
+    df_var_objetivo: pd.DataFrame,
+    var_objetivo: str,
+    relacion: str,
+    nueva_col: str
+) -> pd.DataFrame:
+    df_migras = (
+        df_migras
+        .merge(
+            df_var_objetivo[['año', 'iso3_econ', var_objetivo]],
+            left_on=['año', 'iso3_orig'],
+            right_on=['año', 'iso3_econ'],
+            how='left'
+        )
+        .rename(columns={var_objetivo: f'{var_objetivo}_orig'})
+        .drop(columns='iso3_econ')
+    )
+
+    df_migras = (
+        df_migras
+        .merge(
+            df_var_objetivo[['año', 'iso3_econ', var_objetivo]],
+            left_on=['año', 'iso3_des'],
+            right_on=['año', 'iso3_econ'],
+            how='left'
+        )
+        .rename(columns={var_objetivo: f'{var_objetivo}_des'})
+        .drop(columns='iso3_econ')
+    )
+
+    df_migras[f'a_{nueva_col}'] = pd.Series(pd.NA, index=df_migras.index)
+    df_migras[f'de_{nueva_col}'] = pd.Series(pd.NA, index=df_migras.index)
+
+    seleccion = (
+        df_migras[f'{var_objetivo}_orig'].notna()
+        & df_migras[f'{var_objetivo}_des'].notna()
+    )
+
+    if relacion == 'a menor':
+        df_migras.loc[seleccion, f'a_{nueva_col}'] = (
+            df_migras.loc[seleccion, f'{var_objetivo}_orig']
+            > df_migras.loc[seleccion, f'{var_objetivo}_des']
+        )
+        df_migras.loc[seleccion, f'de_{nueva_col}'] = (
+            df_migras.loc[seleccion, f'{var_objetivo}_orig']
+            < df_migras.loc[seleccion, f'{var_objetivo}_des']
+        )
+    else:        
+        df_migras.loc[seleccion, f'a_{nueva_col}'] = (
+            df_migras.loc[seleccion, f'{var_objetivo}_orig']
+            < df_migras.loc[seleccion, f'{var_objetivo}_des']
+        )
+        df_migras.loc[seleccion, f'de_{nueva_col}'] = (
+            df_migras.loc[seleccion, f'{var_objetivo}_orig']
+            > df_migras.loc[seleccion, f'{var_objetivo}_des']
+        )
+
+    return df_migras
+
+
+
+
+
+def filtrar_migraciones_segun_umbral(
+    df: pd.DataFrame,
+    umbral: int = 96,
+) -> tuple[pd.DataFrame, int]:
+    """
+    Filtra los datos al umbral indicado.
+    """   
+    df_filtrado = df.copy()       
+    migra_total = df_filtrado.migrantes.sum()
+    df_filtrado['pct_aporte'] = 100 * df_filtrado.migrantes / migra_total
+    df_filtrado['pct_aporte_acum'] = df_filtrado.pct_aporte.cumsum()
+    df_filtrado = df_filtrado[df_filtrado.pct_aporte_acum < umbral]
+    valor_mig_max = df_filtrado['migrantes'].max()
+    return df_filtrado, valor_mig_max
+
+
+def obtener_datos_red_primer_orden(
+    pais: str,
+    # variable_objetivo: str,
+    df_migraciones: pd.DataFrame,
+    umbral:int,
+) -> tuple[pd.DataFrame, int]:
+    """
+    Filtra datos migratorios al umbral indicado y agrega la columna con la variable objetivo.
+    """
+    
+    # Obtengo los datos del pais    
+    df_migras = (
+        df_migraciones.query(
+            "iso2_orig == @pais | (iso2_orig != 'ZZ' & iso2_des == @pais)"
+        ).copy()
+    )
+    # Filtro inmigración y emigración al umbral indicado        
+    df_migras_desde_pais = (
+        df_migras.query("iso2_orig == @pais")
+        .sort_values(['año', 'migrantes'], ascending=[True, False])
+        # .reset_index(drop=True)
+    )
+    df_migras_hacia_pais = (
+        df_migras.query("iso2_des == @pais")
+        .sort_values(['año', 'migrantes'], ascending=[True, False])
+        # .reset_index(drop=True)
+    )
+    
+    # Filtro al umbral indicado, obtengo el flujo maximo y reuno los datos
+    df_pais = pd.DataFrame()
+    años = [1990, 1995, 2000, 2005, 2010, 2015, 2020, 2024]
+    flujo_max_en_red = 0
+    for año in años: 
+        df_emigracion, max_emigrantes = filtrar_migraciones_segun_umbral(
+            df_migras_desde_pais.query("año == @año"), umbral
+        )
+        df_inmigracion, max_inmigrantes = filtrar_migraciones_segun_umbral(
+            df_migras_hacia_pais.query("año == @año"), umbral
+        )
+        flujo_maximo = max(max_emigrantes, max_inmigrantes)
+        if flujo_max_en_red < flujo_maximo:
+            flujo_max_en_red = flujo_maximo
+
+        df_pais = pd.concat([df_pais, df_emigracion])
+        df_pais = pd.concat([df_pais, df_inmigracion])
+    
+    return df_pais, flujo_max_en_red
+
+
+
+
+
+def obtener_datos_evolucion_migratoria(
+    conj_paises: set[str], # {iso2, }
+    orden: int, # Orden de la red ego de cada país en la lista
+    df_migraciones: pd.DataFrame,
+    umbral: int,
+) -> tuple[dict[int, pd.DataFrame], int]:
+    """
+    Retorna los datos que permiten construir las redes migratorias
+    a partir de las redes egocéntricas de cada país en el conjunto,
+    incluyendo las relaciones hasta el orden indicado.
+    """        
+    # Para filtrar los países en redes de orden > 1
+    conj_paises_acum = conj_paises.copy()
+
+    # Obtengo los datos migratorios de los países en la lista
+    df_red = pd.DataFrame()
+    flujo_max_en_red = 0
+    
+    while orden > 0:
+        
+        for pais in conj_paises:            
+            # Obtengo los datos del país según el orden            
+            df_pais, flujo_maximo = obtener_datos_red_primer_orden(
+                pais, df_migraciones, umbral
+            )
+            df_red = pd.concat([df_red, df_pais])
+
+            # Actualizo el flujo maximo para normalizar el grosor de los enlaces
+            if flujo_max_en_red < flujo_maximo:
+                flujo_max_en_red = flujo_maximo
+
+        # Actualizo el conjunto de países con los que están ahora en la red 
+        # pero no estaban en el conjunto original
+        conj_paises = (
+            set(
+                list(df_red.iso2_orig.unique()) + list(df_red.iso2_des.unique())
+            ) - conj_paises_acum
+        )
+        conj_paises_acum = conj_paises_acum | conj_paises
+
+        orden -= 1
+        
+    df_red = df_red.drop_duplicates().reset_index(drop=True)
+    
+    return df_red, flujo_max_en_red
+
+
+def construir_redes_long(
+    df_datos_redes: pd.DataFrame,
+    max_migrantes: int,
+    # variable_objetivo: str,
+) -> dict[int, nx.DiGraph]:
+    """
+    Retorna las redes por año en un diccionario y la cantidad máx. de migrantes
+    durante el período.
+    """
+    
+    años = [1990, 1995, 2000, 2005, 2010, 2015, 2020, 2024]
+    dicc_redes_por_año = {}    
+
+    for año in años:    
+        
+        red = nx.DiGraph()
+        df_red = df_datos_redes.query("año == @año").copy()
+        
+        for _, fila in df_red.iterrows():
+            # Países        
+            origen = fila['iso2_orig']
+            destino = fila['iso2_des']
+            # Ubicaciones
+            x_orig, y_orig = fila.lon_orig, fila.lat_orig
+            x_des, y_des = fila.lon_des, fila.lat_des
+            # Migración (normalización grosor aristas)
+            migrantes = fila['migrantes'] / max_migrantes        
+            # Agregamos nodos y enlace a la red
+            red.add_node(
+                origen, 
+                centroide=(x_orig, y_orig),
+                pais=fila['origen_ES'],
+                region=fila['region_orig_ES'],
+                subregion=fila['subregion_orig_ES'],
+            )
+            red.add_node(
+                destino,
+                centroide=(x_des, y_des),
+                pais=fila['destino_ES'],
+                region=fila['region_des_ES'],
+                subregion=fila['subregion_des_ES'],
+            )
+            red.add_edge(
+                origen,
+                destino,
+                weight=migrantes,                
+                a_limitrofe=fila['a_limitrofe'],
+                idioma_en_comun=fila['idioma_en_comun'],
+                a_menor_desempleo=fila['a_menor_desempleo'],
+                a_menor_inflacion=fila['a_menor_inflacion'],
+                a_menor_gini=fila['a_menor_gini'], # Faltan ~80% de los datos
+                a_mayor_pbi=fila['a_mayor_pbi'],
+                a_mayor_idh=fila['a_mayor_idh'],
+                a_pais_desarrollado=fila['a_pais_desarrollado'],
+                a_mayor_poblacion=fila['a_mayor_poblacion'],
+                a_pais_con_litoral=fila['a_pais_con_litoral'],
+            )
+
+        dicc_redes_por_año[año] = red
+
+    return dicc_redes_por_año
+
+
+def obtener_posiciones_nodos(
+    dicc_redes: dict[int, nx.DiGraph],
+    distribucion: str,
+    **args
+) -> tuple[dict[str, np.ndarray], int]:    
+    """
+    Retorna la posición y la cantidad máxima de nodos en las redes del período.
+    """
+    # Parámetros para redes ego de orden 1 (spring)
+    k = args.get('k', .8) 
+    # Parámetros para redes ego de orden > 1 (forceatlas2)
+    gravedad = args.get('gravedad', 1.0)
+    jt = args.get('jt', 1.0)
+    ll = args.get('ll', False)
+    escala = args.get('escala', 2.0)
+    peso = args.get('peso', 'weight')
+    atraccion_pareja = args.get('atraccion_pareja', False)
+    atraer_al_centro = args.get('atraer_al_centro', False)
+    # Parámetros para ambos casos    
+    iteraciones = args.get('iteraciones', 60)
+    semilla = args.get('semilla', 42)
+    
+    red_periodo = nx.compose_all(dicc_redes.values())    
+
+    if distribucion == 'spring':
+        pos = nx.spring_layout(
+            red_periodo,
+            k=k,
+            iterations=iteraciones,
+            seed=semilla,
+        )        
+    elif distribucion == 'force':        
+        pos = nx.forceatlas2_layout(
+            red_periodo,
+            max_iter=iteraciones,
+            weight=peso,
+            seed=semilla,
+            jitter_tolerance=jt,
+            linlog=ll,
+            gravity=gravedad,
+            distributed_action=atraccion_pareja,
+            strong_gravity=atraer_al_centro,
+            scaling_ratio=escala
+        )
+    elif distribucion == 'kamada':
+        pos = nx.kamada_kawai_layout(red_periodo)
+    elif distribucion == 'circular':
+        pos = nx.circular_layout(red_periodo)
+
+        
+    return pos, red_periodo.number_of_nodes()
+
+
+
+
+def graficar_red(
+    eje: Axes,
+    red: nx.DiGraph,
+    pos: dict[str, np.ndarray], 
+    titulo: str,
+    var_objetivo: str,
+    **args
+) -> Axes:
+   
+    # Parámetros del gráfico
+    color_fondo = args.get('color_fondo', 'white')
+    color_nodos = args.get('color_nodos', '#3c5339')
+    color_var_objetivo = args.get('color_var_objetivo', '#008d6e')
+    color_no_var_objetivo = args.get('color_no_var_objetivo', '#8d0000')
+    color_sin_dato_var = args.get('color_sin_dato_var', '#cfcf29')
+    color_etq_pais = args.get('color_etq_pais', '#101010')
+    alfa_nodos = args.get('alfa_nodos', .3)
+    alfa_aristas = args.get('alfa_aristas', .8)
+    alfa_etiquetas = args.get('alfa_etiquetas', .8)
+    tam_nodos = args.get('tam_nodos', 500)
+    tam_tex_etq = args.get('tam_tex_etq', 11)
+    tam_titulo = args.get('tam_titulo', 16)
+    pos_titulo = args.get('pos_titulo', (0.5, -0.01))
+    
+    eje.set_facecolor(color_fondo)
+    eje.axis('off')
+    
+    # Título eje
+    eje.text(
+        pos_titulo[0],
+        pos_titulo[1],
+        titulo,
+        transform=eje.transAxes,
+        ha='center',
+        va='top',
+        fontsize=tam_titulo,
+        fontweight='bold',
+        color=color_etq_pais
+    )        
+    
+    # Nodos
+    nx.draw_networkx_nodes(
+        red,
+        pos,
+        node_size=tam_nodos,
+        node_color=color_nodos,
+        edgecolors='none',
+        alpha=alfa_nodos,
+        ax=eje,
+    )    
+
+    # Etiquetas
+    for nodo in red.nodes():
+        nx.draw_networkx_labels(
+            red,
+            pos,
+            labels={nodo: nodo},
+            font_color=color_etq_pais,
+            font_weight='bold',
+            alpha=alfa_etiquetas,
+            font_size=tam_tex_etq,
+            ax=eje,
+        )        
+        
+    # Aristas       
+    pesos_aristas = [float(red[u][v]['weight'])*1.2e1 for u,v in red.edges()]
+    valor_var_obj = [red[u][v][f'{var_objetivo}'] for u,v in red.edges()]
+    
+    for i, (orig, des) in enumerate(red.edges()):        
+        valor = valor_var_obj[i]
+        if pd.isna(valor):
+            color_aris = color_sin_dato_var
+        elif valor:
+            color_aris = color_var_objetivo
+        else:
+            color_aris = color_no_var_objetivo
+
+        nx.draw_networkx_edges(
+            red,
+            pos,
+            edgelist=[(orig, des)],
+            width=pesos_aristas[i],
+            edge_color=color_aris,
+            alpha=alfa_aristas,
+            connectionstyle='arc3,rad=0.25',
+            style='solid',
+            arrowstyle='->',
+            # arrowstyle='-|>',
+            # arrowstyle='wedge, shrink_factor=.001',# tail_width=.1',
+            arrowsize=max(10,pesos_aristas[i]*5),
+            arrows=True,
+            ax=eje
+        )
+
+
+def graficar_evolucion_redes(
+    titulo: str,
+    nombre_salida: str,
+    dicc_redes: dict[int, nx.DiGraph],
+    pos: dict[str, np.ndarray],
+    var_objetivo: str,
+    max_nodos: int,
+    flujo_maximo_en_red: int,
+    umbral:int,
+    **args
+) -> Figure:
+    
+    # Parámetros de la visualización    
+    dpi = args.get('dpi', 300)
+    tam_figura = args.get('tam_figura', (20,10))  
+    color_fondo = args.get('color_fondo', 'white')
+    color_nodos = args.get('color_nodos', '#3c5339')
+    color_var_objetivo = args.get('color_var_objetivo', '#008d6e')
+    color_no_var_objetivo = args.get('color_no_var_objetivo', '#8d0000')
+    color_sin_dato_var = args.get('color_sin_dato_var', '#cfcf29')
+    color_etq_pais = args.get('color_etq_pais', '#101010')
+    alfa_nodos = args.get('alfa_nodos', .3)
+    alfa_aristas = args.get('alfa_aristas', .8)
+    alfa_etiquetas = args.get('alfa_etiquetas', .8)
+    tam_nodos = args.get('tam_nodos', 500)
+    tam_tex_etq = args.get('tam_tex_etq', 11) # Códigos de países
+    tam_titulo = args.get('tam_titulo', 25)
+    tam_tex_ref = args.get('tam_tex_ref', 14)
+
+    # FIGURA
+    fig, ejes = plt.subplots(2, 4, figsize=tam_figura, dpi=dpi)
+    fig.set_facecolor(color_fondo) 
+    
+    fig.suptitle(
+        # f'Evolución de redes migratorias centradas en {titulo} (1990-2024)',
+        titulo,
+        fontsize=tam_titulo,
+        fontweight='bold',
+        color=color_etq_pais,
+        y=1,
+    )
+    
+    ejes = ejes.ravel()
+
+    # Barra de progreso
+    pct_barra = 0.0
+    formato_barra: str = "{desc}: [{bar}] {percentage:3.0f}% | {elapsed}"
+    texto_barra: str = f'Construyendo gráficos de redes'       
+
+    incremento = 100 / (len(ejes) +1)
+    with tqdm(total=100, desc=texto_barra, bar_format=formato_barra) as barra_pct:
+        barra_pct.n = 0
+        barra_pct.refresh()
+        for (año, red), eje in zip(dicc_redes.items(), ejes):
+            graficar_red(eje, red, pos, f'{año}', var_objetivo, **args)
+            barra_pct.n += incremento
+            barra_pct.refresh()
+        
+        # REFERENCIAS    
+        dicc_refs = {
+            'a_limitrofe': ('A país limítrofe.', 'A país no limítrofe.'),
+            'idioma_en_comun': ('Idioma compartido.', 'Diferentes idiomas.'),
+            'a_mayor_poblacion': ('A país con mayor población.', 'A país con menor población.'),
+            'a_mayor_pbi': ('A país con mayor PBI.', 'A país con menor PBI.'),
+            'a_menor_inflacion': ('A país con menor inflación.', 'A país con mayor inflación.'),
+            'a_menor_gini': ('A país con menor Gini.', 'A país con mayor Gini.'), # Faltan ~80% de los datos
+            'a_menor_desempleo': ('A país con menor desempleo.', 'A país con mayor desempleo.'),
+            'a_mayor_pbi': ('A mayor PBI.','A menor PBI.'),
+            'a_mayor_idh': ('A mayor IDH.','A menor IDH.'),
+            'a_pais_desarrollado': ('A país desarrollado.', 'A país menos desarrollado.'),
+            'a_pais_con_litoral': ('A país con litorial.', 'A país sin litoral.'),
+            'no_dato': 'Sin dato.',
+            'r_enlaces': f'• Flujo máximo: {flujo_maximo_en_red} migrantes.',
+            'r_nodos': f'• Máximo de nodos en red: {max_nodos} países.',
+            'r_umbral': f'• {umbral-1}% de datos migratorios.',
+        }        
+        ref_enlaces = mpatches.Patch(
+            facecolor='none',
+            label=dicc_refs['r_enlaces']
+        )    
+        ref_var = mpatches.Patch(
+            color=to_rgba(color_var_objetivo, alpha=alfa_aristas),
+            label=dicc_refs[var_objetivo][0]
+        )    
+        ref_no_var = mpatches.Patch(
+            color=to_rgba(color_no_var_objetivo, alpha=alfa_aristas),
+            label=dicc_refs[var_objetivo][1]
+        )    
+        ref_no_dato= mpatches.Patch(
+            color=to_rgba(color_sin_dato_var, alpha=alfa_aristas),
+            label=dicc_refs['no_dato']
+        )    
+        ref_nodos = mpatches.Patch(
+            facecolor='none',
+            label=dicc_refs['r_nodos']
+        )    
+        ref_umbral = mpatches.Patch(
+            facecolor='none',
+            label=dicc_refs['r_umbral']
+        )
+    
+        lista_ref = [ref_var, ref_no_var, ref_no_dato, ref_enlaces, ref_nodos, ref_umbral]
+        ref = fig.legend(
+            handles=lista_ref,
+            handlelength=2,
+            handleheight=.7,
+            loc='lower center',
+            fontsize=tam_tex_ref,
+            frameon=True,
+            facecolor='none',
+            edgecolor='none',
+            ncol=len(lista_ref),
+            bbox_to_anchor=(0.5, -0.06),
+        )
+    
+        for text in ref.get_texts():
+            text.set_color(color_etq_pais)
+        fig.add_artist(ref)
+        
+        fig.tight_layout()
+        plt.savefig(f'resultados/{nombre_salida}.png', bbox_inches='tight', dpi=300)        
+        plt.close()
+    
+        barra_pct.n += incremento
+        barra_pct.refresh()
+   
+    return fig
+
+
+
+
+def obtener_fila_pct_direcciones(
+    dicc_direcciones: dict[str, list[str]],
+    df_migras: pd.DataFrame,
+    pais: str,
+    año: int,
+) -> dict:  
+   
+    df_emigra_pais = df_migras.query('iso2_orig == @pais').copy()
+    total_emigrantes = df_emigra_pais['migrantes'].sum() 
+    
+    df_inmigra_pais = df_migras.query('iso2_des == @pais').copy()
+    total_inmigrantes = df_inmigra_pais['migrantes'].sum() 
+
+    fila = {
+        'iso2': pais,
+        'año': año,
+        'emigrantes': total_emigrantes,
+        'inmigrantes': total_inmigrantes,
+    }
+    
+    # Emigracion
+    for direccion in dicc_direcciones['emigratorias']:
+        obtener_fila(
+            df_emigra_pais,
+            fila,
+            direccion,
+            direccion,
+            total_emigrantes,
+            False,
+        )    
+    for direccion in dicc_direcciones['emigratorias_con_faltantes']:
+        obtener_fila(
+            df_emigra_pais,
+            fila,
+            direccion,
+            direccion,
+            total_emigrantes,
+            True,
+        )
+    # Inmigracion
+    for direccion in dicc_direcciones['inmigratorias']:
+        obtener_fila(
+            df_inmigra_pais,
+            fila,
+            direccion,
+            direccion,
+            total_inmigrantes,
+            False,
+        )    
+    for direccion in dicc_direcciones['inmigratorias_con_faltantes']:
+        obtener_fila(
+            df_emigra_pais,
+            fila,
+            direccion,
+            direccion,
+            total_emigrantes,
+            True,
+        )
+    # Relaciones simétricas    
+    for direccion in dicc_direcciones['simetricas']:
+        col_dir_emigra = f'a_{direccion}'
+        col_dir_inmigra = f'de_{direccion}'            
+        obtener_fila(
+            df_emigra_pais,
+            fila,
+            direccion,
+            col_dir_emigra,
+            total_emigrantes,
+            False,
+        )
+        obtener_fila(
+            df_inmigra_pais,
+            fila,
+            direccion,
+            col_dir_inmigra,
+            total_inmigrantes,
+            False,
+        )             
+            
+    return fila
+
+
+def obtener_fila(
+    df: pd.DataFrame,
+    fila: dict,
+    direccion: str,
+    col_direccion: str,
+    total_migracion:int,
+    ajustar: bool,
+) -> None:       
+    # Calculo el porcentaje en la dirección
+    seleccion = df[f'{direccion}'] == True
+    total_dir = df.loc[seleccion, 'migrantes'].sum()
+    pct_dir = (total_dir * 100) / total_migracion
+    fila[f'pct_{col_direccion}'] = round(pct_dir, 2)
+    # Lo ajusto si corresponde
+    if ajustar:
+        total_na_dir = df[df[f'{direccion}'].isna()]['migrantes'].sum()
+        prop_faltantes = total_na_dir / total_migracion
+        completitud = 1 - prop_faltantes
+        fila[f'completitud_{col_direccion}'] = completitud
+        fila[f'pct_{col_direccion}_ajustado'] = round(pct_dir * completitud, 2)
+        
+
+
+
+def graficar_dir_migras_pais(
+    df_migras: pd.DataFrame,
+    pais: str,
+) -> tuple[Figure, Axes]:
+    
+    # Configuración del gráfico
+    color_ejes = '#121411'
+    color_nombre_eje = '#1c1f1b'
+    color_borde_refs = '#ffffff'
+    tam_titulo = 10
+    tam_nombre_eje = 9
+    tam_marcas_ejes = 8
+    tam_ref = 8
+    grosor = 1.5
+    tam_punto = 7
+    alfa_linea = 1.0
+    colores = {        
+        'A país limítrofe': '#00c100',
+        'Idioma en común': '#0055ff',
+        'A menor desempleo': '#dd0000',
+        'A menor inflación': '#dd0000',
+        'A mayor PBI': '#680000',
+        'A mayor IDH': '#680000',
+        'A país desarrollado': '#888888',
+    }
+    punteadas = ['A mayor PBI', 'A menor inflación' ] 
+
+    cols_direcciones = {
+        'pct_a_limitrofe': 'A país limítrofe',
+        'pct_a_idioma_en_comun': 'Idioma en común',
+        'pct_a_menor_desempleo_ajustado': 'A menor desempleo',
+        'pct_a_menor_inflacion_ajustado': 'A menor inflación',
+        'pct_a_mayor_pbi_ajustado': 'A mayor PBI',
+        'pct_a_mayor_idh_ajustado': 'A mayor IDH',
+        'pct_a_pais_desarrollado': 'A país desarrollado',
+    }
+
+    df = df_migras[df_migras['iso2'] == pais].copy()
+    df = df[['iso2', 'año'] + list(cols_direcciones.keys())]
+    df = df.rename(columns=cols_direcciones)
+    df_res = df.copy()
+    df = (
+        df.melt(
+            id_vars=['iso2', 'año'],
+            value_vars=list(cols_direcciones.values()),
+            var_name='direccion',
+            value_name='porcentaje',
+        )
+    )    
+     
+    fig, eje = plt.subplots(figsize=(10, 4))
+    eje.minorticks_on()
+    eje.grid(True, which="minor", axis="y", alpha=0.3)
+    for direccion, df_g in df.groupby('direccion'):
+        linea = '--' if direccion in punteadas else '-'
+        eje.plot(
+            df_g['año'],
+            df_g['porcentaje'],
+            linewidth=grosor,
+            label=direccion,       
+            linestyle=linea,
+            color=colores[direccion],
+            alpha=alfa_linea,
+        )
+        eje.scatter(
+            df_g['año'], 
+            df_g['porcentaje'], 
+            s=tam_punto, 
+            color=colores[direccion], 
+            alpha=alfa_linea
+        )
+        
+    eje.set_xlabel('Año', fontsize=tam_nombre_eje)
+    eje.set_ylabel('Porcentaje de emigrantes', fontsize=tam_nombre_eje)
+    eje.tick_params(axis="both", labelsize=tam_marcas_ejes)
+    eje.spines['right'].set_visible(False)
+    eje.spines['top'].set_visible(False)
+    eje.spines['left'].set_color(color_ejes)
+    eje.spines['bottom'].set_color(color_ejes)
+    eje.tick_params(axis='x', colors=color_ejes)
+    eje.tick_params(axis='y', colors=color_ejes)
+    eje.xaxis.label.set_color(color_ejes)
+    eje.yaxis.label.set_color(color_ejes)
+    
+    objetos, etiquetas = eje.get_legend_handles_labels()
+    orden = list(cols_direcciones.values())
+    id_orden = [etiquetas.index(etq) for etq in orden]
+    eje.legend(
+        [objetos[i] for i in id_orden],
+        [etiquetas[i] for i in id_orden],
+        title='Direcciones', 
+        fontsize=tam_ref, 
+        framealpha=1,
+        edgecolor=color_borde_refs,
+        loc='center right',
+        bbox_to_anchor=(1.2, 0.5),
+    )
+    titulo = f'Emigración de {pais} (1990-2024)'
+    eje.set_title(titulo, fontsize=tam_titulo, pad=13)
+    
+    plt.tight_layout()
+    plt.savefig(f'resultados/dir_emigración_{pais}.png', dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    return fig, df_res
+
+
+
+    
+def graficar_distribucion_direccion(
+    df_migras: pd.DataFrame,
+    direccion: str,
+) -> Figure:
+    
+    # Configuración del gráfico de caja
+    ancho_cajas = .2
+    color_datos = '#234437'#2d5566'#1f384b'
+    # COnfiguración del gráfico
+    color_ejes = '#121411'
+    tam_titulo = 10.5
+    tam_nombre_eje = 9
+    tam_marcas_ejes = 8
+    tam_ref = 9
+    
+    viso_caja = {
+        'facecolor': color_datos,
+        'color': color_datos,
+    }
+    viso_mediana = {
+        'color': '#ff0000',
+        'linewidth': 4,
+    }
+    viso_bigotes = {
+        'color': color_datos,
+        'linewidth': 1   
+    }
+    viso_punta_bigotes = {
+        'color': color_datos,
+        'linewidth': 1.7,
+    }
+    viso_atipicos = {
+        'marker': 'o',
+        'markerfacecolor': color_datos,
+        'markeredgecolor': color_datos,
+        'markersize': 1.5,
+    }
+
+    # Años a comparar
+    años = [1990, 1995, 2000, 2005, 2010, 2015, 2020, 2024]
+    
+    direcciones = {
+        'pct_a_limitrofe': 'a país limítrofe',
+        'pct_a_idioma_en_comun': 'a país con idioma compartido',
+        'pct_a_menor_desempleo_ajustado': 'a país con menor desempleo',
+        'pct_a_menor_inflacion_ajustado': 'a país con menor inflación',
+        'pct_a_mayor_pbi_ajustado': 'a país con mayor PBI',
+        'pct_a_mayor_idh_ajustado': 'a país con mayor IDH',
+        'pct_a_pais_desarrollado': 'a país desarrollado',
+    }
+
+    df = df_migras.copy()
+    
+    # Extraemos los datos de la triangular superior de la matriz de coocurrencias
+    # y los guardamos para visualizar
+    datos_caja = []
+    for año in años:
+        df_año = df[df['año'] == año]
+        datos_caja.append(df_año[f'{direccion}'].to_numpy())
+    
+    # Visualizamos
+    fig = plt.figure(figsize=(8,5))
+    plt.boxplot(
+        datos_caja,
+        widths=ancho_cajas,
+        tick_labels=años,
+        patch_artist=True,
+        boxprops=viso_caja,
+        medianprops=viso_mediana,
+        whiskerprops=viso_bigotes,
+        flierprops=viso_atipicos,
+        capprops=viso_punta_bigotes,
+    )    
+    
+    eje = plt.gca()
+    eje.set_xlabel('Año', fontsize=tam_nombre_eje)
+    eje.set_ylabel('Porcentaje', fontsize=tam_nombre_eje)
+    eje.tick_params(axis="both", labelsize=tam_marcas_ejes)
+    
+    for spine in eje.spines.values():
+        spine.set_edgecolor(color_ejes)
+        spine.set_linewidth(.5)
+    
+    eje.tick_params(axis='x', colors=color_ejes)
+    eje.tick_params(axis='y', colors=color_ejes)
+    eje.xaxis.label.set_color(color_ejes)
+    eje.yaxis.label.set_color(color_ejes)
+    eje.minorticks_on()
+    eje.grid(True, which="minor", axis="y", alpha=0.3)
+    
+    titulo = f'Distribución de porcentaje de migración {direcciones[direccion]} (1990-2024)'
+    eje.set_title(titulo, fontsize=tam_titulo, pad=13)
+    
+    plt.tight_layout()
+    plt.savefig(f'resultados/distribucion_direccion_{direccion}.png', dpi=300, bbox_inches='tight')
+    plt.close()
+
+    return fig
+
+
+
+
+
+def detectar_concentracion_emigracion(
+    df_migraciones: pd.DataFrame,
+    umbral:int,
+) -> pd.DataFrame:
+    """
+    """
+    años = [1990, 1995, 2000, 2005, 2010, 2015, 2020, 2024]
+    cols = ['iso2_orig', 'origen_ES', 'iso2_des','destino_ES', 'año', 'migrantes']
+    paises = df_migraciones.iso2_orig.unique()
+    df_migras = df_migraciones[cols]
+    df_res = pd.DataFrame()
+    for pais in paises:
+        df_pais = (
+            df_migras.query('iso2_orig == @pais').copy()
+            .sort_values(['año', 'migrantes'], ascending=[True, False])
+        )
+        
+        for año in años: 
+            df_año = df_pais.query('año == @año').copy()
+            emigra_total = df_año.migrantes.sum()
+            df_año['pct_aporte'] = 100 * df_año.migrantes / emigra_total
+            df_año = df_año[df_año.pct_aporte > umbral]
+            
+            if len(df_año) > 0:
+                df_res = pd.concat([df_res,df_año])
+                
+    return df_res.sort_values(['año', 'migrantes'], ascending=[True, False]).reset_index(drop=True)
+
+
+
+
+
+
+def graficar_dir_migratorias_pais(
+    df_migras: pd.DataFrame,
+    pais: str,
+) -> tuple[Figure, Axes]:
+    
+    # Configuración del gráfico    
+    dpi = 96 
+    tam_figura = (10, 6)
+    color_ejes = '#121411'
+    color_nombre_eje = '#1c1f1b'
+    color_borde_refs = '#ffffff'
+    tam_titulo = 12
+    tam_subtitulo = 10
+    tam_nombre_eje = 9
+    tam_marcas_ejes = 8
+    tam_ref = 8
+    grosor = 1.5
+    tam_punto = 7
+    alfa_linea = 1.0
+    colores = {        
+        'país limítrofe': '#00c100',
+        'idioma en común': '#0055ff',
+        'menor desempleo': '#dd0000',
+        'menor inflación': '#dd0000',
+        'mayor PBI': '#680000',
+        'mayor IDH': '#680000',
+        'país desarrollado': '#888888',
+    }
+    punteadas = ['mayor PBI', 'menor inflación' ] 
+
+    cols_dir_emigra = {
+        'pct_a_limitrofe': 'país limítrofe',
+        'pct_a_idioma_en_comun': 'idioma en común',
+        'pct_a_menor_desempleo_ajustado': 'menor desempleo',
+        'pct_a_menor_inflacion_ajustado': 'menor inflación',
+        'pct_a_mayor_pbi_ajustado': 'mayor PBI',
+        'pct_a_mayor_idh_ajustado': 'mayor IDH',
+        'pct_a_pais_desarrollado': 'país desarrollado',
+    }
+    cols_dir_inmigra = {
+        'pct_de_limitrofe': 'país limítrofe',
+        'pct_de_idioma_en_comun': 'idioma en común',
+        'pct_de_menor_desempleo_ajustado': 'menor desempleo',
+        'pct_de_menor_inflacion_ajustado': 'menor inflación',
+        'pct_de_mayor_pbi_ajustado': 'mayor PBI',
+        'pct_de_mayor_idh_ajustado': 'mayor IDH',
+        'pct_de_pais_desarrollado': 'país desarrollado',
+    }
+
+    df = df_migras[df_migras['iso2'] == pais].copy()
+    
+    fig, ejes = plt.subplots(2, 1, figsize=tam_figura, dpi=dpi)
+    ejes.ravel()   
+
+    for eje, sentido in zip(ejes, ['emigración', 'inmigración']):
+        datos = {}
+        if sentido == 'emigración':
+            df_emigra = df[['iso2', 'año'] + list(cols_dir_emigra.keys())].copy()
+            df_emigra = df_emigra.rename(columns=cols_dir_emigra)
+            df_emigra = (
+                df_emigra.melt(
+                    id_vars=['iso2', 'año'],
+                    value_vars=list(cols_dir_emigra.values()),
+                    var_name='direccion',
+                    value_name='porcentaje',
+                )
+            )
+            orden = list(cols_dir_emigra.values())
+            prefijo = 'Hacia '
+            titulo = f'Emigración'            
+            datos['emigración'] = df_emigra
+        else:            
+            df_inmigra = df[['iso2', 'año'] + list(cols_dir_inmigra.keys())].copy()
+            df_inmigra = df_inmigra.rename(columns=cols_dir_inmigra)
+            df_inmigra = (
+                df_inmigra.melt(
+                    id_vars=['iso2', 'año'],
+                    value_vars=list(cols_dir_inmigra.values()),
+                    var_name='direccion',
+                    value_name='porcentaje',
+                )
+            )
+            orden = list(cols_dir_inmigra.values())
+            prefijo = 'Desde '
+            titulo = f'Inmigración'
+            eje.set_xlabel('Año', fontsize=tam_nombre_eje)
+            datos['inmigración'] = df_inmigra
+            
+            
+        eje.set_title(titulo, fontsize=tam_subtitulo, pad=13,) #fontweight='bold',)
+        
+        for direccion, df_g in datos[sentido].groupby('direccion'):
+            linea = '--' if direccion in punteadas else '-'
+            eje.plot(
+                df_g['año'],
+                df_g['porcentaje'],
+                linewidth=grosor,
+                label=direccion,       
+                linestyle=linea,
+                color=colores[direccion],
+                alpha=alfa_linea,
+            )
+            eje.scatter(
+                df_g['año'], 
+                df_g['porcentaje'], 
+                s=tam_punto, 
+                color=colores[direccion], 
+                alpha=alfa_linea
+            )
+        
+        # eje.set_xlabel('Año', fontsize=tam_nombre_eje)
+        eje.set_ylabel('% migrantes', fontsize=tam_nombre_eje)
+        eje.tick_params(axis="both", labelsize=tam_marcas_ejes)
+        eje.spines['right'].set_visible(False)
+        eje.spines['top'].set_visible(False)
+        eje.spines['left'].set_color(color_ejes)
+        eje.spines['bottom'].set_color(color_ejes)
+        eje.tick_params(axis='x', colors=color_ejes)
+        eje.tick_params(axis='y', colors=color_ejes)
+        eje.xaxis.label.set_color(color_ejes)
+        eje.yaxis.label.set_color(color_ejes)        
+        eje.minorticks_on()
+        eje.grid(True, which="minor", axis="y", alpha=0.3)
+    
+        objetos, etiquetas = eje.get_legend_handles_labels()
+        # orden = list(cols_direcciones.values())
+        id_orden = [etiquetas.index(etq) for etq in orden]
+        eje.legend(
+            [objetos[i] for i in id_orden],
+            [f'{prefijo}{etiquetas[i]}' for i in id_orden],
+            title=f'Dirección', 
+            fontsize=tam_ref, 
+            framealpha=1,
+            edgecolor=color_borde_refs,
+            loc='center right',
+            bbox_to_anchor=(1.3, 0.5),
+        )
+        
+    titulo = f'Direcciones migratorias de {pais} 1990-2024'
+    fig.suptitle(
+        titulo,
+        fontsize=tam_titulo,
+        fontweight='bold',
+        color='black',
+        y=1,
+    )
+    plt.tight_layout()
+    plt.savefig(f'resultados/dir_migración_{pais}.png', dpi=dpi, bbox_inches='tight')
+    plt.close()
+    
+    return fig
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Migraciones en el Commonwealth (y funciones reutilizadas en otras secciones)
 
 def graficar_red_cw(
     df_migras: pd.DataFrame,
@@ -2964,7 +3892,7 @@ def graficar_red_cw(
 
 
 # Metricas de la red migratoria con origenes en la COmmonwealth
-def metricas_red_cw(
+def metricas_red(
     df_red: pd.DataFrame,
     n_ranking
 ) -> tuple[dict[str, int | float], pd.DataFrame]:
@@ -3473,7 +4401,7 @@ def graficar_bloques(
 
 
 
-def graficar_comparacion_cw_poblacion(
+def graficar_migras_poblacion(
     df_vis: pd.DataFrame,
     dicc_tex_ref: dict[str, str],
     nombre_eje_y: str,
@@ -3492,6 +4420,8 @@ def graficar_comparacion_cw_poblacion(
     tam_nombre_eje = 10
     tam_marcas_ejes = 9
     tam_ref = 12
+    lim_eje_y = args.get('lim_eje_y', (3e7, 9e7))
+    config_lim_y = args.get('config_lim_y', False)
 
     # Eje migraciones
     fig, eje1 = plt.subplots(figsize=(10, 3))
@@ -3530,7 +4460,8 @@ def graficar_comparacion_cw_poblacion(
     )    
     
     eje1.set_xlabel('Year', fontsize=tam_nombre_eje)
-    eje1.set_ylim(3e7, 9e7) # Para que coincidan las escalas de los dos ejes
+    if config_lim_y:
+        eje1.set_ylim(lim_eje_y[0], [1]) # Para que coincidan las escalas de los dos ejes
     eje1.set_ylabel(
         nombre_eje_y,
         fontsize=tam_nombre_eje,
@@ -3602,7 +4533,9 @@ def graficar_comparacion_cw_poblacion(
 
 
 
-def graficar_comparacion_migra_cw(
+
+
+def graficar_comparacion_migras(
     df_vis: pd.DataFrame,
     dicc_tex_ref: dict[str, str],
     nombre_eje_y: str,
@@ -3617,10 +4550,9 @@ def graficar_comparacion_migra_cw(
     color_borde_refs = args.get('color_borde_refs', '#ffffff')
     color_area = args.get('color_area', '#797438')
     alfa_area = args.get('alfa_area', .2)
-    tam_titulo = 10
-    tam_nombre_eje = 10
-    tam_marcas_ejes = 9
-    tam_ref = 12
+    tam_nombre_eje = args.get('tam_nombre_eje', 10)
+    tam_marcas_ejes = args.get('tam_marcas_ejes', 9)
+    tam_ref = args.get('tam_ref', 12)
 
     fig, eje = plt.subplots(figsize=(10, 3))
     eje.minorticks_on()
@@ -3684,16 +4616,6 @@ def graficar_comparacion_migra_cw(
             alpha=alfa_area,
         )
 
-    # Límites del intervalo
-    # for i in [0, -1]:
-    #     eje.vlines(
-    #         x=df_vis['año'].iloc[i],
-    #         ymin=df_vis[tipos_migra[0]].iloc[i],
-    #         ymax=df_vis[tipos_migra[1]].iloc[i],
-    #         color=color_area,
-    #         linestyle='--',
-    #         linewidth=1.2,
-    #     )
     for i in [0, -1]:
         x = df_vis['año'].iloc[i]
         y1 = df_vis[tipos_migra[0]].iloc[i]
@@ -3710,24 +4632,7 @@ def graficar_comparacion_migra_cw(
             # fontweight='bold',
             color=color_area,
             va='center',
-        )
-    # # barras apiladas
-    # tipos_migra = list(colores_var.keys())
-    # eje.bar(
-    #     df_vis['año'],
-    #     df_vis[tipos_migra[0]],
-    #     color=colores_var[tipos_migra[0]],
-    #     label=dicc_tex_ref[tipos_migra[0]],
-    #     width=0.7,
-    # )
-    # eje.bar(
-    #     df_vis['año'],
-    #     df_vis[tipos_migra[1]],
-    #     bottom=df_vis[tipos_migra[0]],
-    #     color=colores_var[tipos_migra[1]],
-    #     label=dicc_tex_ref[tipos_migra[1]],
-    #     width=0.7,
-    # )        
+        ) 
 
     eje.set_xlabel('Year', fontsize=tam_nombre_eje)
     eje.set_ylabel(nombre_eje_y, fontsize=tam_nombre_eje)
@@ -3759,7 +4664,8 @@ def graficar_comparacion_migra_cw(
 
 
 
-def graficar_comparacion_migra_direcciones_cw(
+
+def graficar_barras_migras(
     df_vis: pd.DataFrame,
     dicc_tex_ref: dict[str, str],
     nombre_eje_y: str,
@@ -3774,65 +4680,139 @@ def graficar_comparacion_migra_direcciones_cw(
     color_borde_refs = args.get('color_borde_refs', '#ffffff')
     color_area = args.get('color_area', '#797438')
     alfa_area = args.get('alfa_area', .2)
-    tam_titulo = 10
-    tam_nombre_eje = 10
-    tam_marcas_ejes = 9
-    tam_ref = 12
+    ubicacion_refs =args.get('ubicacion_refs', (.5, -.21))
+    tam_nombre_eje = args.get('tam_nombre_eje', 13)
+    tam_marcas_ejes = args.get('tam_marcas_ejes', 12)
+    tam_ref = args.get('tam_ref', 15)
+    tam_tex_pct = args.get('tam_tex_pct', 11)
+    tam_fig = args.get('tam_fig', (10, 4))
+    grosor_barras = args.get('grosor_barras', 1.5)
+    margen_etq_pct = args.get('margen_etq_pct', 1)
 
-    fig, eje = plt.subplots(figsize=(10, 4))
-    eje.minorticks_on()
-    eje.grid(True, which="minor", axis="y", alpha=0.3)
+    
+    fig, eje = plt.subplots(figsize=tam_fig)
 
-    # Curvas
+    redondear = lambda x: f'{int(round(x,1))}%' if round(x,1).is_integer() else f'{x:.1f}%'
+
+    # barras apiladas
+    total = df_vis[list(colores_var.keys())].sum(axis=1)  
+    num_categorias = len(colores_var.keys())
+    piso = 0
     
     for tipo_migra in colores_var.keys():
-        # Calculo el crecimiento        
-        inicial = df_vis[tipo_migra].iloc[0]
-        final = df_vis[tipo_migra].iloc[-1]
-        factor = final / inicial
-        # crecimiento = (factor - 1) * 100
-        # print(f'{tipo_migra}: +{crecimiento:.1f}%')
-        # print(f'{tipo_migra}: ×{factor:.2f}')
-        
-        linea, grosor = ('-', 1.9)
-        eje.plot(
+        eje.bar(
             df_vis['año'],
             df_vis[tipo_migra],
-            linewidth=grosor,
-            label=dicc_tex_ref[tipo_migra],       
-            linestyle=linea,
+            bottom=piso,
             color=colores_var[tipo_migra],
-        )
-        eje.scatter(
-            df_vis['año'],
+            label=dicc_tex_ref[tipo_migra],
+            width=grosor_barras,
+            zorder=5
+        )    
+            
+        # Anotaciones        
+        valores_pct = df_vis[tipo_migra] / total * 100
+        for x, y, valor_pct, i in zip(
+            df_vis['año'], 
             df_vis[tipo_migra],
-            s=7,
-            color=colores_var[tipo_migra],
-        )
+            valores_pct,
+            range(len(df_vis[tipo_migra]))
+        ):  
+            if i == 0:
+                # Piso puede ser un itn o una serie, configuro cada caso
+                if isinstance(piso, pd.Series):
+                    if num_categorias > 6 and tipo_migra == 'migra_colon_comun':
+                        pos = (x-margen_etq_pct, piso.iloc[i] - 9e5 + y/2)
+                    else:
+                        pos = (x-margen_etq_pct, piso.iloc[i] + y/2)                    
+                else:
+                    pos = (x-margen_etq_pct, y/2)                    
+                # Nota pct de cada dirección 
+                eje.annotate(
+                    redondear(valor_pct),
+                    pos,
+                    ha='right',
+                    va='center',
+                    fontsize=tam_tex_pct,
+                    fontweight='bold',
+                    color=colores_var[tipo_migra],#color_ejes,
+                    zorder=5
+                    )      
+                
+            elif i == len(df_vis[tipo_migra]) - 1:                             
+                if isinstance(piso, pd.Series):
+                     pos = (x+margen_etq_pct, piso.iloc[i] + y/2)                    
+                else:
+                    pos = (x+margen_etq_pct, y/2)                    
+                # Nota pct de cada dirección 
+                eje.annotate(
+                    redondear(valor_pct),
+                    pos,
+                    ha='left',
+                    va='center',
+                    fontsize=tam_tex_pct,
+                    fontweight='bold',
+                    color=colores_var[tipo_migra],#color_ejes,
+                    zorder=5
+                )
+        piso = piso + df_vis[tipo_migra]
         
-        eje.annotate(
-            f'×{factor:.2f}',
-            (df_vis['año'].iloc[-1], df_vis[tipo_migra].iloc[-1]),
-            xytext=(5, 0),
-            textcoords='offset points',
-            fontsize=8,
-            # fontweight='bold',
-            color=colores_var[tipo_migra],
-            va='center',
-        )
-
-    eje.set_xlabel('Year', fontsize=tam_nombre_eje)
+    # Configuración EJE X
+    eje.set_xlim(1985, 2026)
+    # eje.set_xlabel('Year', fontsize=tam_nombre_eje)
+    # Escribo el ultimo año con datos
+    marcas_eje_x = list(eje.get_xticks())
+    marcas_eje_x.append(2024)
+    eje.set_xticks(sorted(set(marcas_eje_x)))  
+    # Oculto los valores extremos del eje x 
+    etq_marcas_ejex = eje.get_xticklabels()
+    etq_marcas_ejex[0].set_visible(False)
+    etq_marcas_ejex[-1].set_visible(False)
+    etq_marcas_ejex[-2].set_visible(False)
+    eje.xaxis.label.set_color(color_ejes)   
+    # oculto las marcas chiquitas del eje x
+    eje.tick_params(
+        axis='x',
+        which='major',
+        bottom=True,
+        top=False,
+        colors=color_ejes,
+        labelsize=tam_marcas_ejes,
+    )
+    eje.tick_params(
+        axis='x',
+        which='minor',
+        bottom=False,
+        top=False,
+        labelbottom=False
+    )    
+    # Oculto únicamente la marquita de 2025
+    for tick in eje.xaxis.get_major_ticks():
+        if tick.get_loc() == 2025:
+            tick.tick1line.set_visible(False)
+            tick.tick2line.set_visible(False)
+    
+    # Configuración EJE Y
     eje.set_ylabel(nombre_eje_y, fontsize=tam_nombre_eje)
-    eje.tick_params(axis="both", labelsize=tam_marcas_ejes)
-    eje.spines['right'].set_visible(False)
+    eje.yaxis.label.set_color(color_ejes)    
+    eje.yaxis.get_offset_text().set_fontsize(tam_marcas_ejes)
+
+    # COnfiguración AMBOS EJES    
+    eje.minorticks_on()    
+    eje.grid(True, which="minor", axis="y", alpha=0.15)
+    eje.tick_params(
+        axis='y', 
+        colors=color_ejes,
+        labelsize=tam_marcas_ejes,
+        right=True,
+        labelright=True,
+        which='both'
+    )
+    eje.spines['right'].set_visible(True)
     eje.spines['top'].set_visible(False)
     eje.spines['left'].set_color(color_ejes)
     eje.spines['bottom'].set_color(color_ejes)
-    eje.tick_params(axis='x', colors=color_ejes)
-    eje.tick_params(axis='y', colors=color_ejes)
-    eje.xaxis.label.set_color(color_ejes)
-    eje.yaxis.label.set_color(color_ejes)
-      
+          
     fig.legend(
         title=None,
         ncol=2,
@@ -3840,10 +4820,11 @@ def graficar_comparacion_migra_direcciones_cw(
         framealpha=1,
         edgecolor=color_borde_refs,
         loc='lower center',        
-        # alignment='left',
-        bbox_to_anchor=(.5, -.15), # Para bajar la ubicación de la ref
-    )   
-    
+        bbox_to_anchor=ubicacion_refs, # Para bajar la ubicación de la ref
+        handlelength=.9,
+        handleheight=.7,
+    )
+        
     plt.tight_layout()
     plt.savefig(f'resultados/{nombre_salida}.png', dpi=300, bbox_inches='tight')
     plt.close()
@@ -3852,6 +4833,155 @@ def graficar_comparacion_migra_direcciones_cw(
 
 
 
+
+
+def graficar_composicion_migras(
+    df_vis: pd.DataFrame,
+    dicc_tex_ref: dict[str, str],
+    nombre_eje_y: str,
+    colores_var: dict[str, str],
+    nombre_salida: str,
+    **args,
+) -> tuple[Figure, Axes]:       
+    
+    # COnfiguración del gráfico
+    color_ejes = args.get('color_ejes', '#121411')
+    color_nombre_eje = args.get('color_nombre_ejes', '#1c1f1b')
+    color_borde_refs = args.get('color_borde_refs', '#ffffff')
+    color_area = args.get('color_area', '#797438')
+    alfa_area = args.get('alfa_area', .2)
+    ubicacion_refs =args.get('ubicacion_refs', (.5, -.21))
+    tam_nombre_eje = args.get('tam_nombre_eje', 13)
+    tam_marcas_ejes = args.get('tam_marcas_ejes', 12)
+    tam_ref = args.get('tam_ref', 15)
+    tam_tex_pct = args.get('tam_tex_pct', 11)
+    tam_fig = args.get('tam_fig', (10, 4))
+    grosor_barras = args.get('grosor_barras', 1.5)
+    margen_etq_pct = args.get('margen_etq_pct', 1)
+    
+    fig, eje = plt.subplots(figsize=tam_fig)    
+
+    redondear = lambda x: f'{int(round(x,1))}%' if round(x,1).is_integer() else f'{x:.1f}%'
+
+    # barras apiladas al 100%
+    piso = 0
+    total = df_vis[list(colores_var.keys())].sum(axis=1)  
+    
+    for tipo_migra in colores_var.keys():
+        
+        valores = df_vis[tipo_migra] / total * 100
+    
+        eje.bar(
+            df_vis['año'],
+            valores,
+            bottom=piso,
+            color=colores_var[tipo_migra],
+            label=dicc_tex_ref[tipo_migra],
+            width=grosor_barras,
+            zorder=4,
+        )
+
+        # Anotaciones
+        for x, y, i in zip(df_vis['año'], valores, range(len(df_vis[tipo_migra]))):
+
+            if i == 0:                
+                if isinstance(piso, pd.Series):
+                    pos = (x-margen_etq_pct, piso.iloc[i] + y/2)                    
+                else:
+                    pos = (x-margen_etq_pct, y/2)
+                eje.annotate(
+                    redondear(y),
+                    pos,
+                    ha='right',
+                    va='center',
+                    fontsize=tam_tex_pct,
+                    fontweight='bold',
+                    color=colores_var[tipo_migra],
+                    zorder=5
+                )                
+            elif i == len(df_vis[tipo_migra]) - 1:                
+                if isinstance(piso, pd.Series):
+                    pos = (x+margen_etq_pct, piso.iloc[i] + y/2)
+                else:
+                    pos = (x+margen_etq_pct, y/2)                                                
+                eje.annotate(
+                    redondear(y),
+                    pos,
+                    ha='left',
+                    va='center',
+                    fontsize=tam_tex_pct,
+                    fontweight='bold',
+                    color=colores_var[tipo_migra],
+                    zorder=5
+                )  
+                
+        piso = piso + valores
+
+        
+    # Configuración EJE X
+    eje.set_xlim(1985, 2026)
+    # eje.set_xlabel('Year', fontsize=tam_nombre_eje)
+    # Escribo el ultimo año con datos
+    marcas_eje_x = list(eje.get_xticks())
+    marcas_eje_x.append(2024)
+    eje.set_xticks(sorted(set(marcas_eje_x)))      
+    # Oculto los valores extremos del eje x 
+    etq_marcas_ejex = eje.get_xticklabels()
+    etq_marcas_ejex[0].set_visible(False)
+    etq_marcas_ejex[-1].set_visible(False)
+    etq_marcas_ejex[-2].set_visible(False)
+    eje.xaxis.label.set_color(color_ejes)
+    # Ocultar únicamente la marquita de 2025
+    for tick in eje.xaxis.get_major_ticks():
+        if tick.get_loc() == 2025:
+            tick.tick1line.set_visible(False)
+            tick.tick2line.set_visible(False)
+
+    
+    # Configuración EJE Y
+    eje.set_ylabel(nombre_eje_y, fontsize=tam_nombre_eje)
+    eje.yaxis.label.set_color(color_ejes)    
+    eje.yaxis.get_offset_text().set_fontsize(tam_marcas_ejes)
+    eje.tick_params(
+        axis='both', 
+        colors=color_ejes,
+        labelsize=tam_marcas_ejes,
+        right=True,
+        labelright=True,
+        which='both'
+    )
+
+    # COnfiguración AMBOS EJES    
+    eje.minorticks_on()    
+    eje.grid(True, which="minor", axis="y", alpha=0.2)
+    eje.tick_params(axis='x', which='minor', bottom=False, labelsize=tam_marcas_ejes,)
+
+    eje.spines['right'].set_visible(True)
+    eje.spines['top'].set_visible(False)
+    eje.spines['bottom'].set_visible(False)
+    eje.spines['left'].set_color(color_ejes)
+    eje.spines['bottom'].set_color(color_ejes)
+          
+    fig.legend(
+        title=None,
+        ncol=2,
+        fontsize=tam_ref,
+        framealpha=1,
+        edgecolor=color_borde_refs,
+        loc='lower center',        
+        bbox_to_anchor=ubicacion_refs, # Para bajar la ubicación de la ref
+        handlelength=.9,
+        handleheight=.7,
+    )
+        
+    plt.tight_layout()
+    plt.savefig(f'resultados/{nombre_salida}.png', dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    return fig, eje
+
+
+    
 
     
 
@@ -3943,7 +5073,7 @@ def graficar_cuerdas_cw(
     tam_tex_nodos = args.get('tam_tex_nodos', 15)
     tam_figura = args.get('tam_figura', (14, 14))
     alfa_enlaces = args.get('alfa_enlaces', .7)
-    
+    refs_a_imprimir = args.get('refs_a_imprimir', '')
     color_enlaces = {
         'a_idioma_comun': color_a_idioma_comun,
         'a_otro_idioma':color_a_otro_idioma
@@ -3989,12 +5119,29 @@ def graficar_cuerdas_cw(
     tex_ref_otro_idioma = 'Different Language'#'Distinto idioma'
     tex_ref_nodos_destacados = 'Commonwealth'
     tex_ref_nodos_restantes = 'Rest of the World'#'Resto del mundo'
-    referencias = [
-        Line2D([], [], color=color_nodos_a_destacar, lw=8, label=tex_ref_nodos_destacados),
-        Line2D([], [], color=color_resto_nodos, lw=8, label=tex_ref_nodos_restantes),
-        Line2D([], [], color=color_enlaces['a_idioma_comun'], alpha=alfa_enlaces, lw=8, label=tex_ref_idioma_comun),
-        Line2D([], [], color=color_enlaces['a_otro_idioma'], alpha=alfa_enlaces, lw=8, label=tex_ref_otro_idioma),
-    ]
+
+    if refs_a_imprimir == 'idioma':
+        referencias = [
+            # Line2D([], [], color=color_nodos_a_destacar, lw=8, label=tex_ref_nodos_destacados),
+            # Line2D([], [], color=color_resto_nodos, lw=8, label=tex_ref_nodos_restantes),
+            Line2D([], [], color=color_enlaces['a_idioma_comun'], alpha=alfa_enlaces, lw=14, label=tex_ref_idioma_comun),
+            Line2D([], [], color=color_enlaces['a_otro_idioma'], alpha=alfa_enlaces, lw=14, label=tex_ref_otro_idioma),
+        ]
+    elif refs_a_imprimir == 'miembros':        
+        referencias = [
+            Line2D([], [], color=color_nodos_a_destacar, lw=14, label=tex_ref_nodos_destacados),
+            Line2D([], [], color=color_resto_nodos, lw=14, label=tex_ref_nodos_restantes),
+            # Line2D([], [], color=color_enlaces['a_idioma_comun'], alpha=alfa_enlaces, lw=8, label=tex_ref_idioma_comun),
+            # Line2D([], [], color=color_enlaces['a_otro_idioma'], alpha=alfa_enlaces, lw=8, label=tex_ref_otro_idioma),
+        ]
+    else:
+        tam_tex_ref = 17
+        referencias = [
+            Line2D([], [], color=color_nodos_a_destacar, lw=8, label=tex_ref_nodos_destacados),
+            Line2D([], [], color=color_resto_nodos, lw=8, label=tex_ref_nodos_restantes),
+            Line2D([], [], color=color_enlaces['a_idioma_comun'], alpha=alfa_enlaces, lw=8, label=tex_ref_idioma_comun),
+            Line2D([], [], color=color_enlaces['a_otro_idioma'], alpha=alfa_enlaces, lw=8, label=tex_ref_otro_idioma),
+        ]
 
     fig = circos.plotfig(figsize=tam_figura)
     
